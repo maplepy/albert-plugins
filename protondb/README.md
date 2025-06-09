@@ -165,15 +165,11 @@ MIT License. See LICENSE file for details.
 - Uses [ProtonDB](https://www.protondb.com/) API
 - Uses [Steam Web API](https://steamcommunity.com/dev)
 
-## Changelog
+## Documentation
 
-### v1.0.0
-- Initial release
-- Smart search algorithm with match prioritization
-- Comprehensive error handling and fallback logging
-- Rate limiting and caching
-- Support for all ProtonDB rating tiers
-- Interactive test script for debugging
+For detailed technical documentation, architecture diagrams, and development guides, see [DOCUMENTATION.md](DOCUMENTATION.md).
+
+For version history and changes, see [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
