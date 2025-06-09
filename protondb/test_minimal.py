@@ -12,7 +12,7 @@ md_description = "Minimal ProtonDB test plugin"
 
 # Optional metadata
 md_license = "MIT"
-md_url = "https://github.com/maplepy/albert-protondb"
+md_url = "https://github.com/maplepy/albert-plugins"
 md_authors = ["maplepy"]
 md_bin_dependencies = []
 md_lib_dependencies = []

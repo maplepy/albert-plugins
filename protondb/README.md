@@ -26,7 +26,7 @@ The ProtonDB Search plugin allows you to quickly search for game compatibility r
 1. Clone or download this plugin to your Albert plugins directory
 2. Run the installation script:
    ```bash
-   cd albert/python/plugins/protondb
+   cd albert-plugins/python/plugins/protondb
    chmod +x install.sh
    ./install.sh
    ```

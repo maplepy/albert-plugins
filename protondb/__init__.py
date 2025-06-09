@@ -15,7 +15,7 @@ md_description = "Search game compatibility on ProtonDB"
 
 # Optional metadata
 md_license = "MIT"
-md_url = "https://github.com/maplepy/albert-protondb"
+md_url = "https://github.com/maplepy/albert-plugins"
 md_authors = ["maplepy"]
 md_bin_dependencies = []
 md_lib_dependencies = ["requests"]
