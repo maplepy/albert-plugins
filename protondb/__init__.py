@@ -10,7 +10,7 @@ Based on the approach used by ulauncher-protondb-search plugin.
 # Mandatory metadata
 md_iid = "3.0"
 md_version = "1.0"
-md_name = "ProtonDB"
+md_name = "ProtonDB Search"
 md_description = "Search game compatibility on ProtonDB"
 
 # Optional metadata
