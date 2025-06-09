@@ -26,7 +26,6 @@ import json
 import time
 import os
 from urllib.parse import quote_plus
-from pathlib import Path
 
 # Fallback logging functions for when albert logging is not available
 def safe_warning(message):
@@ -99,7 +98,7 @@ class Plugin(albert.PluginInstance, albert.TriggerQueryHandler):
         self.cache_timeout = 300  # 5 minutes
 
         # Steam API data file
-        self.steam_api_file = self.dataLocation() / 'steamapi.json'
+        self.steam_api_file = os.path.join(str(self.dataLocation()), 'steamapi.json')
         self.steam_api_data = None
         self.steam_api_age = 0
 
@@ -235,7 +234,7 @@ class Plugin(albert.PluginInstance, albert.TriggerQueryHandler):
                 query.add(albert.StandardItem(
                     id="protondb_no_ratings",
                     text="No ProtonDB data found",
-                    subtext=f"Games found but no ProtonDB ratings available",
+                    subtext="Games found but no ProtonDB ratings available",
                     iconUrls=["dialog-information"],
                     actions=[]
                 ))
@@ -259,9 +258,9 @@ class Plugin(albert.PluginInstance, albert.TriggerQueryHandler):
     def _load_steam_api_data(self):
         """Load Steam API data from file"""
         try:
-            if self.steam_api_file.exists():
+            if os.path.exists(self.steam_api_file):
                 # Check if file is recent (less than 7 days old)
-                file_age = time.time() - self.steam_api_file.stat().st_mtime
+                file_age = time.time() - os.path.getmtime(self.steam_api_file)
                 if file_age < 604800:  # 7 days in seconds
                     with open(self.steam_api_file, 'r', encoding='utf-8') as f:
                         self.steam_api_data = json.load(f)
@@ -269,7 +268,7 @@ class Plugin(albert.PluginInstance, albert.TriggerQueryHandler):
                         safe_debug(f"Loaded Steam API data ({len(self.steam_api_data.get('applist', {}).get('apps', []))} games)")
                         return
                 else:
-                    safe_debug("Steam API data is older than 7 days, will refresh")
+                    safe_debug("Steam API data is older than 7 days, will download fresh data")
 
             # Try to download fresh data
             self._download_steam_api_data()
@@ -284,7 +283,7 @@ class Plugin(albert.PluginInstance, albert.TriggerQueryHandler):
             safe_info("Downloading Steam game list...")
 
             # Ensure data directory exists
-            self.steam_api_file.parent.mkdir(parents=True, exist_ok=True)
+            os.makedirs(os.path.dirname(self.steam_api_file), exist_ok=True)
 
             response = self.session.get(self.steam_api, timeout=30)
             response.raise_for_status()
