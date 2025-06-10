@@ -29,6 +29,7 @@ import time
 import os
 import subprocess
 import urllib.parse
+import shutil
 from urllib.parse import quote_plus
 
 # Fallback logging functions for when albert logging is not available
@@ -111,7 +112,12 @@ class Plugin(albert.PluginInstance, albert.TriggerQueryHandler):
         self.order_by = "rating"
         self.sort_direction = "desc"
         self.auto_vpn = False
+        self.default_player = "auto"
         self.trackers = self.default_trackers
+        
+        # Detect available players
+        self.available_players = self._detect_available_players()
+        self.system_default_player = self._get_system_default_player()
 
         # Load configuration from file
         self.readConfig()
@@ -125,6 +131,7 @@ class Plugin(albert.PluginInstance, albert.TriggerQueryHandler):
         self.order_by = "rating"
         self.sort_direction = "desc"
         self.auto_vpn = False
+        self.default_player = "auto"
         self.trackers = self.default_trackers
         
         try:
@@ -140,6 +147,7 @@ class Plugin(albert.PluginInstance, albert.TriggerQueryHandler):
                 self.order_by = config.get("order_by", "rating")
                 self.sort_direction = config.get("sort_direction", "desc")
                 self.auto_vpn = config.get("auto_vpn", False)
+                self.default_player = config.get("default_player", "auto")
                 
                 custom_trackers = config.get("custom_trackers", [])
                 if custom_trackers:
@@ -175,6 +183,7 @@ class Plugin(albert.PluginInstance, albert.TriggerQueryHandler):
                 "order_by": "rating",
                 "sort_direction": "desc",
                 "auto_vpn": False,
+                "default_player": "auto",
                 "custom_trackers": self.default_trackers
             }
             
@@ -183,6 +192,124 @@ class Plugin(albert.PluginInstance, albert.TriggerQueryHandler):
                 
         except Exception as e:
             safe_warning(f"Failed to create default config: {e}")
+
+    def _detect_available_players(self):
+        """Detect which media players are available on the system"""
+        players = {
+            'vlc': 'vlc',
+            'mpv': 'mpv',
+            'mplayer': 'mplayer',
+            'smplayer': 'smplayer',
+            'kodi': 'kodi'
+        }
+        
+        available = []
+        for name, command in players.items():
+            if shutil.which(command):
+                available.append(name)
+                safe_debug(f"Found player: {name}")
+        
+        return available
+
+    def _get_system_default_player(self):
+        """Get system default media player for video files"""
+        try:
+            # Try to get system default for video files (Linux)
+            result = subprocess.run(['xdg-mime', 'query', 'default', 'video/mp4'], 
+                                  capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                desktop_file = result.stdout.strip()
+                player = self._map_desktop_to_player(desktop_file)
+                if player:
+                    safe_debug(f"System default player: {player}")
+                    return player
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
+            safe_debug(f"Could not detect system default player: {e}")
+        
+        return None
+
+    def _map_desktop_to_player(self, desktop_file):
+        """Map .desktop file to player name"""
+        player_mappings = {
+            'vlc.desktop': 'vlc',
+            'org.videolan.VLC.desktop': 'vlc',
+            'mpv.desktop': 'mpv',
+            'io.mpv.Mpv.desktop': 'mpv',
+            'mplayer.desktop': 'mplayer',
+            'smplayer.desktop': 'smplayer',
+            'kodi.desktop': 'kodi',
+            'org.xbmc.kodi.desktop': 'kodi'
+        }
+        
+        return player_mappings.get(desktop_file.lower())
+
+    def _get_effective_player(self):
+        """Determine which player to actually use"""
+        if self.default_player == "auto":
+            # Auto-detect: prefer VLC > MPV > others > system default
+            preferred_order = ['vlc', 'mpv', 'kodi', 'mplayer', 'smplayer']
+            for player in preferred_order:
+                if player in self.available_players:
+                    return player
+            
+            # Fall back to system default if available
+            if self.system_default_player and self.system_default_player in self.available_players:
+                return self.system_default_player
+                
+            # Last resort: let WebTorrent decide
+            return "webtorrent_auto"
+            
+        elif self.default_player == "system":
+            if self.system_default_player and self.system_default_player in self.available_players:
+                return self.system_default_player
+            else:
+                # Fall back to auto if system default not available
+                return self._get_effective_player_auto()
+                
+        elif self.default_player in self.available_players:
+            # User specified a player and it's available
+            return self.default_player
+            
+        else:
+            # User specified a player but it's not available, fall back to auto
+            safe_warning(f"Configured player '{self.default_player}' not available, using auto-detection")
+            return self._get_effective_player_auto()
+
+    def _get_effective_player_auto(self):
+        """Auto-detection logic separated for reuse"""
+        preferred_order = ['vlc', 'mpv', 'kodi', 'mplayer', 'smplayer']
+        for player in preferred_order:
+            if player in self.available_players:
+                return player
+        return "webtorrent_auto"
+
+    def _build_stream_command(self, magnet_uri):
+        """Build WebTorrent command with appropriate player"""
+        player = self._get_effective_player()
+        
+        base_cmd = [
+            "webtorrent", 
+            magnet_uri,
+            "--quiet",
+            "--out", self.download_path
+        ]
+        
+        # Add player-specific flag
+        if player == "vlc":
+            base_cmd.append("--vlc")
+        elif player == "mpv":
+            base_cmd.append("--mpv")
+        elif player == "mplayer":
+            base_cmd.append("--mplayer")
+        elif player == "smplayer":
+            base_cmd.append("--smplayer")
+        elif player == "kodi":
+            base_cmd.append("--xbmc")
+        else:
+            # webtorrent_auto or unknown - let WebTorrent choose
+            base_cmd.append("--player")
+        
+        return base_cmd
 
     def initialize(self):
         """Initialize plugin and read configuration"""
@@ -194,10 +321,19 @@ class Plugin(albert.PluginInstance, albert.TriggerQueryHandler):
 
         if not search_term:
             config_file = os.path.join(str(self.dataLocation()), 'config.json')
+            
+            # Show player info
+            effective_player = self._get_effective_player()
+            player_info = f"Player: {effective_player}"
+            if self.available_players:
+                player_info += f" (Available: {', '.join(self.available_players)})"
+            else:
+                player_info += " (No players detected!)"
+            
             query.add(albert.StandardItem(
                 id="movie_help",
                 text="Movie Search & Stream",
-                subtext="Enter a movie title to search for torrents",
+                subtext=f"Enter a movie title to search for torrents • {player_info}",
                 iconUrls=["xdg:video-x-generic"],
                 actions=[
                     albert.Action(
@@ -355,16 +491,12 @@ class Plugin(albert.PluginInstance, albert.TriggerQueryHandler):
             # Ensure download directory exists
             os.makedirs(self.download_path, exist_ok=True)
             
-            cmd = [
-                "webtorrent", 
-                magnet_uri,
-                "--quiet",
-                "--vlc",
-                "--out", self.download_path
-            ]
+            cmd = self._build_stream_command(magnet_uri)
             
             subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            safe_info("Stream started successfully")
+            
+            effective_player = self._get_effective_player()
+            safe_info(f"Stream started successfully with {effective_player}")
             
         except Exception as e:
             safe_warning(f"Failed to start stream: {e}")
@@ -455,10 +587,13 @@ class Plugin(albert.PluginInstance, albert.TriggerQueryHandler):
                     if torrent_hash:
                         magnet_uri = self._build_magnet_uri(torrent_hash, title)
                         
-                        # Stream action
+                        # Stream action with player info
+                        effective_player = self._get_effective_player()
+                        player_display = effective_player if effective_player != "webtorrent_auto" else "Auto"
+                        
                         actions.append(albert.Action(
                             f"stream_{quality}",
-                            f"🎥 Stream {quality} ({size})",
+                            f"🎥 Stream {quality} ({size}) [{player_display}]",
                             lambda uri=magnet_uri: self._stream_movie(uri)
                         ))
                         

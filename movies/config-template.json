@@ -24,6 +24,9 @@
   "auto_vpn": false,
   "_auto_vpn_note": "Automatically connect Mullvad VPN before torrenting (requires mullvad CLI)",
 
+  "default_player": "auto",
+  "_player_note": "Media player for streaming: auto, vlc, mpv, mplayer, smplayer, kodi, or system",
+
   "custom_trackers": [
     "udp://open.demonii.com:1337/announce",
     "udp://tracker.openbittorrent.com:80",

@@ -244,6 +244,7 @@ setup_configuration() {
   "order_by": "rating",
   "sort_direction": "desc",
   "auto_vpn": false,
+  "default_player": "auto",
   "custom_trackers": [
     "udp://open.demonii.com:1337/announce",
     "udp://tracker.openbittorrent.com:80",

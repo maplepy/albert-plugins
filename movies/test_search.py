@@ -10,6 +10,7 @@ import time
 import requests
 import subprocess
 import urllib.parse
+import shutil
 from pathlib import Path
 
 class MovieSearchTester:
@@ -52,6 +53,10 @@ class MovieSearchTester:
         
         # Load configuration if available
         self._load_config()
+        
+        # Detect available players
+        self.available_players = self._detect_available_players()
+        self.system_default_player = self._get_system_default_player()
 
     def _load_config(self):
         """Load configuration from plugin config file"""
@@ -83,6 +88,93 @@ class MovieSearchTester:
         
         print("⚠ No configuration file found, using defaults")
 
+    def _detect_available_players(self):
+        """Detect which media players are available on the system"""
+        players = {
+            'vlc': 'vlc',
+            'mpv': 'mpv',
+            'mplayer': 'mplayer',
+            'smplayer': 'smplayer',
+            'kodi': 'kodi'
+        }
+        
+        available = []
+        for name, command in players.items():
+            if shutil.which(command):
+                available.append(name)
+        
+        return available
+
+    def _get_system_default_player(self):
+        """Get system default media player for video files"""
+        try:
+            # Try to get system default for video files (Linux)
+            result = subprocess.run(['xdg-mime', 'query', 'default', 'video/mp4'], 
+                                  capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                desktop_file = result.stdout.strip()
+                player = self._map_desktop_to_player(desktop_file)
+                return player
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+            pass
+        
+        return None
+
+    def _map_desktop_to_player(self, desktop_file):
+        """Map .desktop file to player name"""
+        player_mappings = {
+            'vlc.desktop': 'vlc',
+            'org.videolan.VLC.desktop': 'vlc',
+            'mpv.desktop': 'mpv',
+            'io.mpv.Mpv.desktop': 'mpv',
+            'mplayer.desktop': 'mplayer',
+            'smplayer.desktop': 'smplayer',
+            'kodi.desktop': 'kodi',
+            'org.xbmc.kodi.desktop': 'kodi'
+        }
+        
+        return player_mappings.get(desktop_file.lower())
+
+    def check_player_detection(self):
+        """Check available media players"""
+        print("\n" + "="*60)
+        print("CHECKING MEDIA PLAYER DETECTION")
+        print("="*60)
+        
+        if self.available_players:
+            print(f"✓ Available players: {', '.join(self.available_players)}")
+            
+            for player in self.available_players:
+                try:
+                    result = subprocess.run([player, '--version'], 
+                                          capture_output=True, text=True, timeout=5)
+                    if result.returncode == 0:
+                        version_line = result.stdout.split('\n')[0]
+                        print(f"  - {player}: {version_line}")
+                    else:
+                        print(f"  - {player}: Available but version check failed")
+                except Exception as e:
+                    print(f"  - {player}: Available but error getting version: {e}")
+        else:
+            print("❌ No supported media players found!")
+            print("Please install one of: VLC, MPV, MPlayer, SMPlayer, Kodi")
+        
+        if self.system_default_player:
+            print(f"✓ System default player: {self.system_default_player}")
+        else:
+            print("⚠ Could not detect system default player")
+            
+        # Test WebTorrent CLI player detection
+        try:
+            result = subprocess.run(['webtorrent', '--help'], 
+                                  capture_output=True, text=True, timeout=5)
+            if result.returncode == 0 and '--vlc' in result.stdout:
+                print("✓ WebTorrent CLI supports player integration")
+            else:
+                print("⚠ WebTorrent CLI may not support player integration")
+        except Exception as e:
+            print(f"⚠ Could not test WebTorrent CLI: {e}")
+
     def check_configuration(self):
         """Check plugin configuration"""
         print("\n" + "="*60)
@@ -110,6 +202,13 @@ class MovieSearchTester:
                     print(f"✓ Download directory exists: {download_path}")
                 else:
                     print(f"⚠ Download directory does not exist: {download_path}")
+                
+                # Check player configuration
+                default_player = config.get('default_player', 'auto')
+                print(f"Configured player: {default_player}")
+                
+                if default_player != 'auto' and default_player not in self.available_players:
+                    print(f"⚠ Configured player '{default_player}' is not available")
                     
             except Exception as e:
                 print(f"❌ Error reading configuration: {e}")
@@ -376,6 +475,7 @@ class MovieSearchTester:
         print("Commands:")
         print("  - Enter movie title to search")
         print("  - 'config' to check configuration")
+        print("  - 'players' to check media players")
         print("  - 'deps' to check dependencies")
         print("  - 'api' to test YTS API")
         print("  - 'detailed <movie>' for detailed search")
@@ -396,6 +496,8 @@ class MovieSearchTester:
                 # Parse commands
                 if user_input.lower() == 'config':
                     self.check_configuration()
+                elif user_input.lower() == 'players':
+                    self.check_player_detection()
                 elif user_input.lower() == 'deps':
                     self.check_dependencies()
                 elif user_input.lower() == 'api':
@@ -498,12 +600,13 @@ def main():
         print("2. Predefined tests")
         print("3. Full workflow test")
         print("4. Configuration check")
-        print("5. Dependencies check")
-        print("6. API connectivity test")
-        print("7. Exit")
+        print("5. Media player check")
+        print("6. Dependencies check")
+        print("7. API connectivity test")
+        print("8. Exit")
 
         try:
-            choice = input("Enter choice (1-7): ").strip()
+            choice = input("Enter choice (1-8): ").strip()
 
             if choice == "1":
                 tester.run_interactive_test()
@@ -514,10 +617,12 @@ def main():
             elif choice == "4":
                 tester.check_configuration()
             elif choice == "5":
-                tester.check_dependencies()
+                tester.check_player_detection()
             elif choice == "6":
-                tester.test_yts_api()
+                tester.check_dependencies()
             elif choice == "7":
+                tester.test_yts_api()
+            elif choice == "8":
                 print("Exiting...")
             else:
                 print("Invalid choice")
